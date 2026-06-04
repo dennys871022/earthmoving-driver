@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
+from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
@@ -11,81 +11,85 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1y3Qnlx9qFwV6S6pyFTsT4rlXP_T
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception as e:
-    st.error(f"資料庫連線失敗，請檢查 Secrets 設定：{e}")
+    st.error(f"資料庫連線失敗：{e}")
     st.stop()
 
 def load_sheet_data(sheet_name):
     try:
-        # 加上 ttl=0 強制每次重新讀取，避免抓到舊的錯誤快取
         df = conn.read(spreadsheet=SHEET_URL, worksheet=sheet_name, ttl=0)
         return df.dropna(how='all')
-    except Exception as e:
-        # 前台端如果是 except: 就維持原樣即可
-        st.warning(f"無法讀取分頁 `{sheet_name}`。錯誤：{e}")
+    except:
         return pd.DataFrame()
 
 df_drivers = load_sheet_data("drivers")
-df_zones = load_sheet_data("grid_zones")
 
-if df_drivers.empty or df_zones.empty:
-    st.warning("雲端資料庫尚未建立完成，請先由後台管理端上傳車籍與圖資基準。")
+if df_drivers.empty:
+    st.warning("車籍資料庫尚未建立。")
     st.stop()
 
-zone_list = df_zones["分區代號"].tolist() if "分區代號" in df_zones.columns else []
-vehicle_list = df_drivers["車頭車號"].dropna().unique().tolist() if "車頭車號" in df_drivers.columns else []
+search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
 
-tab_search, tab_log = st.tabs(["🔍 快速查詢車籍", "📝 登錄出土紀錄"])
-
-with tab_search:
-    search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
+if search_term:
+    mask = df_drivers.apply(lambda row: row.astype(str).str.replace(r'\s+', '', regex=True).str.upper().str.contains(search_term.upper().replace(" ", "")), axis=1).any(axis=1)
+    search_results = df_drivers[mask]
     
-    if search_term:
-        mask = df_drivers.apply(lambda row: row.astype(str).str.replace(r'\s+', '', regex=True).str.upper().str.contains(search_term.upper().replace(" ", "")), axis=1).any(axis=1)
-        search_results = df_drivers[mask]
-        
-        if search_results.empty:
-            st.warning("查無符合資料")
+    if search_results.empty:
+        st.warning("查無符合資料")
+    else:
+        if len(search_results) > 1:
+            options = search_results.apply(lambda x: f"{x['車頭車號']} ({x['姓名']})", axis=1).tolist()
+            selected_option = st.selectbox("找到多筆，請選擇：", options=options)
+            selected_idx = options.index(selected_option)
+            target_data = search_results.iloc[selected_idx]
         else:
-            if len(search_results) > 1:
-                options = search_results.apply(lambda x: f"{x['車頭車號']} ({x['姓名']})", axis=1).tolist()
-                selected_option = st.selectbox("找到多筆，請選擇：", options=options)
-                selected_idx = options.index(selected_option)
-                target_data = search_results.iloc[selected_idx]
-            else:
-                target_data = search_results.iloc[0]
+            target_data = search_results.iloc[0]
 
-            st.write("#### 📋 點擊灰色區塊直接複製")
-            display_fields = ["姓名", "身分證", "車頭車號", "車斗車號"]
+        plate = target_data['車頭車號']
+
+        if st.button("✅ 確認車輛並自動記錄車次"):
+            current_datetime = datetime.now()
+            current_date_str = current_datetime.strftime("%Y-%m-%d")
+            current_time_str = current_datetime.strftime("%H:%M:%S")
+            note = ""
             
-            for field in display_fields:
-                val = str(target_data.get(field, "無資料"))
-                st.caption(field)
-                st.code(val, language="text")
+            df_logs = load_sheet_data("dispatch_logs")
+            
+            if not df_logs.empty and '日期' in df_logs.columns and '時間' in df_logs.columns:
+                recent_logs = df_logs[df_logs['車頭車號'] == plate].copy()
+                if not recent_logs.empty:
+                    try:
+                        recent_logs['完整時間'] = pd.to_datetime(recent_logs['日期'].astype(str) + ' ' + recent_logs['時間'].astype(str))
+                        last_time = recent_logs['完整時間'].max()
+                        if pd.notnull(last_time):
+                            diff = (current_datetime - last_time).total_seconds()
+                            if diff < 60:
+                                note = "1分鐘內連續查詢"
+                    except:
+                        pass
 
-with tab_log:
-    with st.form("dispatch_form"):
-        t_date = st.date_input("派車日期", date.today())
-        t_plate = st.selectbox("載運車頭車號", options=["請選擇"] + vehicle_list)
-        t_zone = st.selectbox("來源分區", options=["請選擇"] + zone_list)
-        
-        t_vol = st.number_input("實際載運方量 (m³)", value=0.0, min_value=0.0, step=1.0)
-        t_note = st.text_input("備註")
-        
-        submit_btn = st.form_submit_button("➕ 登錄紀錄")
-        
-    if submit_btn:
-        if t_plate == "請選擇" or t_zone == "請選擇":
-            st.error("請完整選擇車號與來源分區！")
-        else:
             new_log = pd.DataFrame([{
-                "日期": str(t_date), "車頭車號": t_plate, "出土分區": t_zone, 
-                "載運方量(m³)": t_vol, "備註": t_note
+                "日期": current_date_str,
+                "時間": current_time_str,
+                "車頭車號": plate,
+                "出土分區": "未指定",
+                "載運方量(m³)": 12.0,
+                "備註": note
             }])
             
             try:
-                current_logs = load_sheet_data("dispatch_logs")
-                updated_logs = pd.concat([current_logs, new_log], ignore_index=True)
+                if df_logs.empty:
+                    updated_logs = new_log
+                else:
+                    updated_logs = pd.concat([df_logs, new_log], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet="dispatch_logs", data=updated_logs)
-                st.success(f"紀錄成功：{t_plate} 從 {t_zone} 載運 {t_vol} m³")
+                st.success("車次紀錄已自動送出！")
             except Exception as e:
-                st.error(f"寫入資料庫失敗：{e}")
+                st.error("寫入資料庫失敗。")
+
+        st.write("#### 📋 點擊灰色區塊直接複製")
+        display_fields = ["姓名", "身分證", "車頭車號", "車斗車號"]
+        
+        for field in display_fields:
+            val = str(target_data.get(field, "無資料"))
+            st.caption(field)
+            st.code(val, language="text")
