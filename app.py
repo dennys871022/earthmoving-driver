@@ -6,7 +6,6 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="現場派車系統", layout="centered")
 st.title("📱 現場車籍查詢與派車")
 
-# 指定試算表網址
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1y3Qnlx9qFwV6S6pyFTsT4rlXP_Tb8qd9tNhRBTjBHao/edit"
 
 try:
@@ -17,14 +16,13 @@ except Exception as e:
 
 def load_sheet_data(sheet_name):
     try:
-        # 加上 spreadsheet=SHEET_URL
         df = conn.read(spreadsheet=SHEET_URL, worksheet=sheet_name)
         return df.dropna(how='all')
     except:
         return pd.DataFrame()
 
-df_drivers = load_sheet_data("車籍資料")
-df_zones = load_sheet_data("圖資基準")
+df_drivers = load_sheet_data("drivers")
+df_zones = load_sheet_data("grid_zones")
 
 if df_drivers.empty or df_zones.empty:
     st.warning("雲端資料庫尚未建立完成，請先由後台管理端上傳車籍與圖資基準。")
@@ -72,20 +70,19 @@ with tab_log:
         
         submit_btn = st.form_submit_button("➕ 登錄紀錄")
         
-       if submit_btn:
-            if t_plate == "請選擇" or t_zone == "請選擇":
-                st.error("請完整選擇車號與來源分區！")
-            else:
-                new_log = pd.DataFrame([{
-                    "日期": str(t_date), "車頭車號": t_plate, "出土分區": t_zone, 
-                    "載運方量(m³)": t_vol, "備註": t_note
-                }])
-                
-                try:
-                    current_logs = load_sheet_data("出土紀錄")
-                    updated_logs = pd.concat([current_logs, new_log], ignore_index=True)
-                    # 加上 spreadsheet=SHEET_URL
-                    conn.update(spreadsheet=SHEET_URL, worksheet="出土紀錄", data=updated_logs)
-                    st.success(f"紀錄成功：{t_plate} 從 {t_zone} 載運 {t_vol} m³")
-                except Exception as e:
-                    st.error(f"寫入資料庫失敗：{e}")
+    if submit_btn:
+        if t_plate == "請選擇" or t_zone == "請選擇":
+            st.error("請完整選擇車號與來源分區！")
+        else:
+            new_log = pd.DataFrame([{
+                "日期": str(t_date), "車頭車號": t_plate, "出土分區": t_zone, 
+                "載運方量(m³)": t_vol, "備註": t_note
+            }])
+            
+            try:
+                current_logs = load_sheet_data("dispatch_logs")
+                updated_logs = pd.concat([current_logs, new_log], ignore_index=True)
+                conn.update(spreadsheet=SHEET_URL, worksheet="dispatch_logs", data=updated_logs)
+                st.success(f"紀錄成功：{t_plate} 從 {t_zone} 載運 {t_vol} m³")
+            except Exception as e:
+                st.error(f"寫入資料庫失敗：{e}")
