@@ -49,7 +49,14 @@ if search_term:
 
         plate = target_data['車頭車號']
 
-        if st.button("✅ 確認車輛並自動記錄車次"):
+        st.markdown("### 🔎 查詢結果確認")
+        st.markdown(f"**姓名：** {target_data.get('姓名', '無資料')}")
+        st.markdown(f"**車頭車號：** {target_data.get('車頭車號', '無資料')}")
+        st.markdown(f"**車斗車號：** {target_data.get('車斗車號', '無資料')}")
+        st.markdown(f"**身分證：** {target_data.get('身分證', '無資料')}")
+        st.divider()
+
+        if st.button("✅ 資訊無誤，確認車輛並記錄車次"):
             current_datetime = datetime.now()
             current_date_str = current_datetime.strftime("%Y-%m-%d")
             current_time_str = current_datetime.strftime("%H:%M:%S")
@@ -87,7 +94,7 @@ if search_term:
                 conn.update(spreadsheet=SHEET_URL, worksheet="dispatch_logs", data=updated_logs)
                 
                 st.session_state['confirmed_plate'] = plate
-                st.success("車次紀錄已自動送出，複製功能已解鎖。")
+                st.success("車次紀錄已自動送出，一鍵複製功能已解鎖！")
             except Exception as e:
                 st.error("寫入資料庫失敗。")
 
@@ -100,4 +107,4 @@ if search_term:
                 st.caption(field)
                 st.code(val, language="text")
         else:
-            st.info("⚠️ 請先點擊上方「✅ 確認車輛並自動記錄車次」按鈕，解鎖資料複製功能。")
+            st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖一鍵複製功能。")
