@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
@@ -57,9 +57,10 @@ if search_term:
         st.divider()
 
         if st.button("✅ 資訊無誤，確認車輛並記錄車次"):
-            current_datetime = datetime.now()
-            current_date_str = current_datetime.strftime("%Y-%m-%d")
-            current_time_str = current_datetime.strftime("%H:%M:%S")
+            # 轉換為台灣時區
+            tw_now = datetime.utcnow() + timedelta(hours=8)
+            current_date_str = tw_now.strftime("%Y-%m-%d")
+            current_time_str = tw_now.strftime("%H:%M:%S")
             note = ""
             
             df_logs = load_sheet_data("dispatch_logs")
@@ -71,7 +72,7 @@ if search_term:
                         recent_logs['完整時間'] = pd.to_datetime(recent_logs['日期'].astype(str) + ' ' + recent_logs['時間'].astype(str))
                         last_time = recent_logs['完整時間'].max()
                         if pd.notnull(last_time):
-                            diff = (current_datetime - last_time).total_seconds()
+                            diff = (tw_now - last_time).total_seconds()
                             if diff < 60:
                                 note = "1分鐘內連續查詢"
                     except:
