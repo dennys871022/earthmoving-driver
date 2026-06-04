@@ -27,6 +27,9 @@ if df_drivers.empty:
     st.warning("車籍資料庫尚未建立。")
     st.stop()
 
+if 'confirmed_plate' not in st.session_state:
+    st.session_state['confirmed_plate'] = ""
+
 search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
 
 if search_term:
@@ -82,14 +85,19 @@ if search_term:
                 else:
                     updated_logs = pd.concat([df_logs, new_log], ignore_index=True)
                 conn.update(spreadsheet=SHEET_URL, worksheet="dispatch_logs", data=updated_logs)
-                st.success("車次紀錄已自動送出！")
+                
+                st.session_state['confirmed_plate'] = plate
+                st.success("車次紀錄已自動送出，複製功能已解鎖。")
             except Exception as e:
                 st.error("寫入資料庫失敗。")
 
-        st.write("#### 📋 點擊灰色區塊直接複製")
-        display_fields = ["姓名", "身分證", "車頭車號", "車斗車號"]
-        
-        for field in display_fields:
-            val = str(target_data.get(field, "無資料"))
-            st.caption(field)
-            st.code(val, language="text")
+        if st.session_state.get('confirmed_plate') == plate:
+            st.write("#### 📋 點擊灰色區塊直接複製")
+            display_fields = ["姓名", "身分證", "車頭車號", "車斗車號"]
+            
+            for field in display_fields:
+                val = str(target_data.get(field, "無資料"))
+                st.caption(field)
+                st.code(val, language="text")
+        else:
+            st.info("⚠️ 請先點擊上方「✅ 確認車輛並自動記錄車次」按鈕，解鎖資料複製功能。")
