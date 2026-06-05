@@ -56,8 +56,7 @@ if search_term:
         st.markdown(f"**身分證：** {target_data.get('身分證', '無資料')}")
         st.divider()
 
-        if st.button("✅ 資訊無誤，確認車輛並記錄車次"):
-            # 轉換為台灣時區
+        if st.button("✅ 資訊無誤，確認車輛並記錄車次", use_container_width=True):
             tw_now = datetime.utcnow() + timedelta(hours=8)
             current_date_str = tw_now.strftime("%Y-%m-%d")
             current_time_str = tw_now.strftime("%H:%M:%S")
@@ -66,17 +65,15 @@ if search_term:
             df_logs = load_sheet_data("dispatch_logs")
             
             if not df_logs.empty and '日期' in df_logs.columns and '時間' in df_logs.columns:
-                recent_logs = df_logs[df_logs['車頭車號'] == plate].copy()
-                if not recent_logs.empty:
-                    try:
-                        recent_logs['完整時間'] = pd.to_datetime(recent_logs['日期'].astype(str) + ' ' + recent_logs['時間'].astype(str))
-                        last_time = recent_logs['完整時間'].max()
-                        if pd.notnull(last_time):
-                            diff = (tw_now - last_time).total_seconds()
-                            if diff < 60:
-                                note = "1分鐘內連續查詢"
-                    except:
-                        pass
+                try:
+                    df_logs['完整時間'] = pd.to_datetime(df_logs['日期'].astype(str) + ' ' + df_logs['時間'].astype(str))
+                    last_time = df_logs['完整時間'].max()
+                    if pd.notnull(last_time):
+                        diff = (tw_now - last_time).total_seconds()
+                        if diff < 60:
+                            note = "1分鐘內連續查詢"
+                except:
+                    pass
 
             new_log = pd.DataFrame([{
                 "日期": current_date_str,
@@ -100,12 +97,13 @@ if search_term:
                 st.error("寫入資料庫失敗。")
 
         if st.session_state.get('confirmed_plate') == plate:
-            st.write("#### 📋 點擊灰色區塊直接複製")
-            display_fields = ["姓名", "身分證", "車頭車號", "車斗車號"]
+            st.write("#### 📋 點擊下方區塊右上角圖示即可一鍵複製全部資料")
             
-            for field in display_fields:
-                val = str(target_data.get(field, "無資料"))
-                st.caption(field)
-                st.code(val, language="text")
+            copy_text = f"姓名：{target_data.get('姓名', '無資料')}\n"
+            copy_text += f"身分證：{target_data.get('身分證', '無資料')}\n"
+            copy_text += f"車頭車號：{target_data.get('車頭車號', '無資料')}\n"
+            copy_text += f"車斗車號：{target_data.get('車斗車號', '無資料')}"
+            
+            st.code(copy_text, language="text")
         else:
-            st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖一鍵複製功能。")
+            st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖複製功能。")
