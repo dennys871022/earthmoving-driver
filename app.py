@@ -30,6 +30,25 @@ if df_drivers.empty:
 if 'confirmed_plate' not in st.session_state:
     st.session_state['confirmed_plate'] = ""
 
+all_fields = ["姓名", "身分證", "車頭車號", "車斗車號"]
+if "order" in st.query_params:
+    url_order = st.query_params["order"].split(",")
+    if set(url_order) == set(all_fields):
+        current_order = url_order
+    else:
+        current_order = all_fields
+else:
+    current_order = all_fields
+
+with st.expander("⚙️ 個人化顯示順序設定"):
+    st.caption("💡 提示：先將下方選項全部「打叉」清除，再依想要的順序重新點選。設定完成後請將此網頁「加入書籤」，即可永久保存專屬順序！")
+    new_order = st.multiselect("設定預覽與個別複製的顯示順序：", options=all_fields, default=current_order)
+    if len(new_order) == 4 and new_order != current_order:
+        st.query_params["order"] = ",".join(new_order)
+        st.rerun()
+
+display_fields = new_order if len(new_order) == 4 else all_fields
+
 search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
 
 if search_term:
@@ -50,10 +69,8 @@ if search_term:
         plate = target_data['車頭車號']
 
         st.markdown("### 🔎 查詢結果確認")
-        st.markdown(f"**姓名：** {target_data.get('姓名', '無資料')}")
-        st.markdown(f"**車頭車號：** {target_data.get('車頭車號', '無資料')}")
-        st.markdown(f"**車斗車號：** {target_data.get('車斗車號', '無資料')}")
-        st.markdown(f"**身分證：** {target_data.get('身分證', '無資料')}")
+        for field in display_fields:
+            st.markdown(f"**{field}：** {target_data.get(field, '無資料')}")
         st.divider()
 
         if st.button("✅ 資訊無誤，確認車輛並記錄車次", use_container_width=True):
@@ -92,18 +109,15 @@ if search_term:
                 conn.update(spreadsheet=SHEET_URL, worksheet="dispatch_logs", data=updated_logs)
                 
                 st.session_state['confirmed_plate'] = plate
-                st.success("車次紀錄已自動送出，一鍵複製功能已解鎖！")
+                st.success("車次紀錄已自動送出，個別複製功能已解鎖！")
             except Exception as e:
                 st.error("寫入資料庫失敗。")
 
         if st.session_state.get('confirmed_plate') == plate:
-            st.write("#### 📋 點擊下方區塊右上角圖示即可一鍵複製全部資料")
-            
-            copy_text = f"姓名：{target_data.get('姓名', '無資料')}\n"
-            copy_text += f"身分證：{target_data.get('身分證', '無資料')}\n"
-            copy_text += f"車頭車號：{target_data.get('車頭車號', '無資料')}\n"
-            copy_text += f"車斗車號：{target_data.get('車斗車號', '無資料')}"
-            
-            st.code(copy_text, language="text")
+            st.write("#### 📋 點擊下方各區塊右上角圖示即可個別複製")
+            for field in display_fields:
+                val = str(target_data.get(field, "無資料"))
+                st.caption(field)
+                st.code(val, language="text")
         else:
             st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖複製功能。")
