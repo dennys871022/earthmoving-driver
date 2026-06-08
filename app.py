@@ -51,11 +51,22 @@ display_fields = new_order if len(new_order) == 4 else all_fields
 
 search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
 
+def match_plate(plate_val, kw):
+    if pd.isna(plate_val):
+        return False
+    plate_str = str(plate_val).upper().strip()
+    if plate_str == kw:
+        return True
+    parts = plate_str.replace("-", " ").split()
+    if kw in parts:
+        return True
+    return False
+
 if search_term:
     keyword = search_term.strip().upper()
     
-    condition = (df_drivers['車頭車號'].astype(str).str.upper() == keyword) | \
-                (df_drivers['車斗車號'].astype(str).str.upper() == keyword)
+    condition = df_drivers['車頭車號'].apply(match_plate, kw=keyword) | \
+                df_drivers['車斗車號'].apply(match_plate, kw=keyword)
     search_results = df_drivers[condition]
     
     if search_results.empty:
