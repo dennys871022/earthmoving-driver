@@ -52,8 +52,11 @@ display_fields = new_order if len(new_order) == 4 else all_fields
 search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
 
 if search_term:
-    mask = df_drivers.apply(lambda row: row.astype(str).str.replace(r'\s+', '', regex=True).str.upper().str.contains(search_term.upper().replace(" ", "")), axis=1).any(axis=1)
-    search_results = df_drivers[mask]
+    keyword = search_term.strip().upper()
+    
+    condition = (df_drivers['車頭車號'].astype(str).str.upper() == keyword) | \
+                (df_drivers['車斗車號'].astype(str).str.upper() == keyword)
+    search_results = df_drivers[condition]
     
     if search_results.empty:
         st.warning("查無符合資料")
