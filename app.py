@@ -23,10 +23,6 @@ def load_sheet_data(sheet_name):
 
 df_drivers = load_sheet_data("drivers")
 
-if df_drivers.empty:
-    st.warning("車籍資料庫尚未建立。")
-    st.stop()
-
 if 'confirmed_plate' not in st.session_state:
     st.session_state['confirmed_plate'] = ""
 
@@ -65,12 +61,44 @@ def match_plate(plate_val, kw):
 if search_term:
     keyword = search_term.strip().upper()
     
-    condition = df_drivers['車頭車號'].apply(match_plate, kw=keyword) | \
-                df_drivers['車斗車號'].apply(match_plate, kw=keyword)
-    search_results = df_drivers[condition]
+    if df_drivers.empty:
+        search_results = pd.DataFrame()
+    else:
+        condition = df_drivers['車頭車號'].apply(match_plate, kw=keyword) | \
+                    df_drivers['車斗車號'].apply(match_plate, kw=keyword)
+        search_results = df_drivers[condition]
     
     if search_results.empty:
-        st.warning("查無符合資料")
+        st.warning("查無符合資料。您可以在此直接新增臨時車籍：")
+        with st.form("add_driver_form"):
+            st.write("### ➕ 新增現場車籍資料")
+            new_head = st.text_input("車頭車號 (必填)", value=keyword)
+            new_tail = st.text_input("車斗車號")
+            new_name = st.text_input("司機姓名 (必填)")
+            new_id = st.text_input("身分證")
+            
+            if st.form_submit_button("寫入資料庫並繼續派車", use_container_width=True):
+                if not new_head or not new_name:
+                    st.error("請至少填寫「車頭車號」與「司機姓名」。")
+                else:
+                    new_row = pd.DataFrame([{
+                        "姓名": new_name.strip(),
+                        "身分證": new_id.strip().upper(),
+                        "車頭車號": new_head.strip().upper(),
+                        "車斗車號": new_tail.strip().upper()
+                    }])
+                    
+                    try:
+                        if df_drivers.empty:
+                            updated_drivers = new_row
+                        else:
+                            updated_drivers = pd.concat([df_drivers, new_row], ignore_index=True)
+                        
+                        conn.update(spreadsheet=SHEET_URL, worksheet="drivers", data=updated_drivers)
+                        st.success("✅ 新增成功！系統將自動重新整理。")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"寫入車籍失敗：{e}")
     else:
         if len(search_results) > 1:
             options = search_results.apply(lambda x: f"{x['車頭車號']} ({x['姓名']})", axis=1).tolist()
