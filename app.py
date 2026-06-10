@@ -16,10 +16,33 @@ except Exception as e:
 
 def load_sheet_data(sheet_name):
     try:
-        df = conn.read(spreadsheet=SHEET_URL, worksheet=sheet_name, ttl=0)
+        # 現場端縮短快取時間，確保能抓到最新資料
+        df = conn.read(spreadsheet=SHEET_URL, worksheet=sheet_name, ttl=5)
         return df.dropna(how='all')
     except:
         return pd.DataFrame()
+
+# 使用底層 gspread 執行「追加(append_row)」，徹底解決多人同時按送出的覆蓋問題
+def safe_append_row(worksheet_name, data_dict):
+    try:
+        # 取得 gspread 工作表物件
+        worksheet = conn.client.open_by_url(SHEET_URL).worksheet(worksheet_name)
+        headers = worksheet.row_values(1)
+        # 依照表頭順序排列資料
+        row_data = [str(data_dict.get(h, "")) for h in headers]
+        worksheet.append_row(row_data)
+        return True
+    except Exception as e:
+        # 若發生意外，退回傳統 update 模式
+        try:
+            df = load_sheet_data(worksheet_name)
+            new_row = pd.DataFrame([data_dict])
+            updated_df = pd.concat([df, new_row], ignore_index=True)
+            conn.update(spreadsheet=SHEET_URL, worksheet=worksheet_name, data=updated_df)
+            return True
+        except Exception as e2:
+            st.error(f"寫入失敗：{e2}")
+            return False
 
 df_drivers = load_sheet_data("drivers")
 
@@ -50,7 +73,8 @@ search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：")
 def match_plate(plate_val, kw):
     if pd.isna(plate_val):
         return False
-    plate_str = str(plate_val).upper().strip()
+    plate_str = str(plate_val).upper().strip().replace(" ", "")
+    kw = kw.replace(" ", "")
     if plate_str == kw:
         return True
     parts = plate_str.replace("-", " ").split()
@@ -78,29 +102,35 @@ if search_term:
             new_id = st.text_input("身分證 (必填)")
             
             if st.form_submit_button("寫入資料庫並繼續派車", use_container_width=True):
-                if not new_head.strip() or not new_tail.strip() or not new_name.strip() or not new_id.strip():
+                # 資料正規化 (去空白、轉大寫)
+                norm_head = new_head.strip().upper().replace(" ", "")
+                norm_tail = new_tail.strip().upper().replace(" ", "")
+                norm_name = new_name.strip()
+                norm_id = new_id.strip().upper().replace(" ", "")
+                
+                if not norm_head or not norm_tail or not norm_name or not norm_id:
                     st.error("所有欄位皆為必填，請檢查是否有遺漏。")
-                elif "-" not in new_head or "-" not in new_tail:
+                elif "-" not in norm_head or "-" not in norm_tail:
                     st.error("車牌格式錯誤：車頭與車斗車號中間必須包含「-」符號。")
                 else:
-                    new_row = pd.DataFrame([{
-                        "姓名": new_name.strip(),
-                        "身分證": new_id.strip().upper(),
-                        "車頭車號": new_head.strip().upper(),
-                        "車斗車號": new_tail.strip().upper()
-                    }])
+                    # 嚴格執行唯一性檢查
+                    existing_plates = []
+                    if not df_drivers.empty and '車頭車號' in df_drivers.columns:
+                        existing_plates = df_drivers['車頭車號'].astype(str).str.upper().str.replace(" ", "").tolist()
                     
-                    try:
-                        if df_drivers.empty:
-                            updated_drivers = new_row
-                        else:
-                            updated_drivers = pd.concat([df_drivers, new_row], ignore_index=True)
-                        
-                        conn.update(spreadsheet=SHEET_URL, worksheet="drivers", data=updated_drivers)
-                        st.success("✅ 新增成功！系統將自動重新整理。")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"寫入車籍失敗：{e}")
+                    if norm_head in existing_plates:
+                        st.error(f"❌ 錯誤：車號 {norm_head} 已經存在於資料庫中！請重新搜尋，或通知管理員檢查重複資料。")
+                    else:
+                        new_driver_data = {
+                            "姓名": norm_name,
+                            "身分證": norm_id,
+                            "車頭車號": norm_head,
+                            "車斗車號": norm_tail
+                        }
+                        # 改用安全追加模式
+                        if safe_append_row("drivers", new_driver_data):
+                            st.success("✅ 新增成功！系統將自動重新整理。")
+                            st.rerun()
     else:
         if len(search_results) > 1:
             options = search_results.apply(lambda x: f"{x['車頭車號']} ({x['姓名']})", axis=1).tolist()
@@ -136,26 +166,20 @@ if search_term:
                 except:
                     pass
 
-            new_log = pd.DataFrame([{
+            # 建構單筆紀錄字典
+            new_log_data = {
                 "日期": current_date_str,
                 "時間": current_time_str,
                 "車頭車號": plate,
                 "出土分區": "未指定",
                 "載運方量(m³)": 12.0,
                 "備註": note
-            }])
+            }
             
-            try:
-                if df_logs.empty:
-                    updated_logs = new_log
-                else:
-                    updated_logs = pd.concat([df_logs, new_log], ignore_index=True)
-                conn.update(spreadsheet=SHEET_URL, worksheet="dispatch_logs", data=updated_logs)
-                
+            # 使用安全追加模式，徹底解決多人併發覆蓋問題
+            if safe_append_row("dispatch_logs", new_log_data):
                 st.session_state['confirmed_plate'] = plate
-                st.success("車次紀錄已自動送出，個別複製功能已解鎖！")
-            except Exception as e:
-                st.error("寫入資料庫失敗。")
+                st.success("車次紀錄已安全追加送出，個別複製功能已解鎖！")
 
         if st.session_state.get('confirmed_plate') == plate:
             st.write("#### 📋 點擊下方各區塊右上角圖示即可個別複製")
