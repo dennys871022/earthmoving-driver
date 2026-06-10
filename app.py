@@ -72,14 +72,16 @@ if search_term:
         st.warning("查無符合資料。您可以在此直接新增臨時車籍：")
         with st.form("add_driver_form"):
             st.write("### ➕ 新增現場車籍資料")
-            new_head = st.text_input("車頭車號 (必填)", value=keyword)
-            new_tail = st.text_input("車斗車號")
+            new_head = st.text_input("車頭車號 (必填，須包含「-」符號，例如 999-GU)", value=keyword)
+            new_tail = st.text_input("車斗車號 (必填，須包含「-」符號)")
             new_name = st.text_input("司機姓名 (必填)")
-            new_id = st.text_input("身分證")
+            new_id = st.text_input("身分證 (必填)")
             
             if st.form_submit_button("寫入資料庫並繼續派車", use_container_width=True):
-                if not new_head or not new_name:
-                    st.error("請至少填寫「車頭車號」與「司機姓名」。")
+                if not new_head.strip() or not new_tail.strip() or not new_name.strip() or not new_id.strip():
+                    st.error("所有欄位皆為必填，請檢查是否有遺漏。")
+                elif "-" not in new_head or "-" not in new_tail:
+                    st.error("車牌格式錯誤：車頭與車斗車號中間必須包含「-」符號。")
                 else:
                     new_row = pd.DataFrame([{
                         "姓名": new_name.strip(),
