@@ -2,65 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
-
-# 暴力破解：徹底破除透明外殼，並強制注入實體紅色按鈕與文字
-st.markdown("""
-    <style>
-    /* 1. 破解隱形外殼：找出包住按鈕的那個透明容器，強制永遠 100% 顯示 */
-    div:has(> [data-testid="stCopyButton"]),
-    div:has(> button[title="Copy to clipboard"]) {
-        opacity: 1 !important;
-        visibility: visible !important;
-    }
-
-    /* 2. 把按鈕本體變成實體的紅色長方形 */
-    [data-testid="stCopyButton"],
-    button[title="Copy to clipboard"] {
-        opacity: 1 !important;
-        visibility: visible !important;
-        background-color: #FF4B4B !important;
-        border: none !important;
-        border-radius: 6px !important;
-        padding: 6px 12px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        width: auto !important;
-        height: 36px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-        transition: all 0.2s ease-in-out !important;
-    }
-
-    /* 3. 在按鈕裡面強制塞入「點擊複製」文字 */
-    [data-testid="stCopyButton"]::after,
-    button[title="Copy to clipboard"]::after {
-        content: "點擊複製" !important;
-        color: white !important;
-        font-size: 14px !important;
-        font-weight: bold !important;
-        margin-left: 6px !important;
-        letter-spacing: 1px !important;
-    }
-
-    /* 4. 把預設的複製小圖示改成白色 */
-    [data-testid="stCopyButton"] svg,
-    button[title="Copy to clipboard"] svg {
-        stroke: white !important;
-        fill: transparent !important;
-        width: 18px !important;
-        height: 18px !important;
-    }
-
-    /* 5. 點擊與懸停的視覺回饋 */
-    [data-testid="stCopyButton"]:hover,
-    button[title="Copy to clipboard"]:hover {
-        background-color: #D43F3F !important;
-        transform: scale(1.05) !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 st.title("📱 現場車籍查詢與派車")
 
@@ -97,6 +41,20 @@ def safe_append_row(worksheet_name, data_dict):
         except Exception as e2:
             st.error(f"寫入失敗：{e2}")
             return False
+
+# 獨立自訂的複製按鈕區塊，完全不受 Streamlit 限制
+def custom_copy_block(label, text):
+    st.caption(label)
+    html_code = f"""
+    <div style="display: flex; align-items: center; justify-content: space-between; background-color: #f7f9fc; padding: 10px 15px; border-radius: 8px; border: 1px solid #e0e4e8; margin-bottom: 5px; font-family: sans-serif;">
+        <div style="font-family: monospace; font-size: 16px; color: #333;">{text}</div>
+        <button onclick="navigator.clipboard.writeText('{text}'); this.innerText='✅ 已複製'; this.style.backgroundColor='#28a745'; setTimeout(() => {{ this.innerText='📋 點擊複製'; this.style.backgroundColor='#FF4B4B'; }}, 2000);"
+                style="background-color: #FF4B4B; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; width: 110px;">
+            📋 點擊複製
+        </button>
+    </div>
+    """
+    components.html(html_code, height=70)
 
 df_drivers = load_drivers_data()
 
@@ -229,7 +187,7 @@ if search_term:
             st.markdown("#### 📋 點擊下方各區塊右側的紅色按鈕即可複製：")
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
-                st.caption(field)
-                st.code(val, language="text")
+                # 使用全新的獨立按鈕元件取代舊的 st.code
+                custom_copy_block(field, val)
         else:
             st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖複製功能。")
