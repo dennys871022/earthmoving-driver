@@ -5,43 +5,57 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
 
-# 強制覆蓋 Streamlit 預設隱藏的複製按鈕
+# 強制覆蓋外觀：全面常駐顯示並加入「複製」文字
 st.markdown("""
     <style>
-    /* 針對所有帶有 Copy to clipboard 提示的按鈕強制顯示與改色 */
+    /* 鎖定複製按鈕，強制常駐顯示並調整為長方形按鈕 */
     div[data-testid="stCodeBlock"] button,
     button[title="Copy to clipboard"],
     button[aria-label="Copy to clipboard"] {
         opacity: 1 !important;
         visibility: visible !important;
         display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         background-color: #FF4B4B !important;
-        border: 2px solid #FF4B4B !important;
-        padding: 6px 10px !important;
-        border-radius: 8px !important;
+        border: 1px solid #FF4B4B !important;
+        padding: 6px 12px !important;
+        border-radius: 6px !important;
+        width: auto !important;
+        height: 32px !important;
+        right: 8px !important;
+        top: 8px !important;
         transform: scale(1) !important;
         transition: all 0.2s ease-in-out !important;
-        z-index: 9999 !important;
     }
     
-    /* 更改 SVG 圖示的顏色與大小 */
+    /* 使用偽元素強制在按鈕內補上「複製」文字 */
+    div[data-testid="stCodeBlock"] button::after,
+    button[title="Copy to clipboard"]::after,
+    button[aria-label="Copy to clipboard"]::after {
+        content: "複製" !important;
+        color: white !important;
+        font-size: 14px !important;
+        font-weight: bold !important;
+        margin-left: 6px !important;
+        white-space: nowrap !important;
+    }
+    
+    /* 調整內建圖示為白色 */
     div[data-testid="stCodeBlock"] button svg,
     button[title="Copy to clipboard"] svg,
     button[aria-label="Copy to clipboard"] svg {
         fill: white !important;
         stroke: white !important;
         color: white !important;
-        width: 22px !important;
-        height: 22px !important;
+        width: 16px !important;
+        height: 16px !important;
     }
     
-    /* 懸停效果 */
-    div[data-testid="stCodeBlock"] button:hover,
-    button[title="Copy to clipboard"]:hover,
-    button[aria-label="Copy to clipboard"]:hover {
+    /* 點擊與懸停視覺回饋 */
+    div[data-testid="stCodeBlock"] button:hover {
         background-color: #D43F3F !important;
         border-color: #D43F3F !important;
-        transform: scale(1.1) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -210,7 +224,7 @@ if search_term:
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
 
         if st.session_state.get('confirmed_plate') == plate:
-            st.markdown("#### 📋 點擊下方區塊右側的「紅底白圖」按鈕即可複製：")
+            st.markdown("#### 📋 點擊下方區塊右側的紅色按鈕即可複製：")
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
                 st.caption(field)
