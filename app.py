@@ -5,49 +5,44 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
 
-# 強制覆蓋外觀：全面常駐顯示並加入「複製」文字
+# 暴力破解：強制廢除 Streamlit 外層隱藏機制，並注入實體文字
 st.markdown("""
     <style>
-    /* 鎖定複製按鈕，強制常駐顯示並調整為長方形按鈕 */
-    div[data-testid="stCodeBlock"] button,
-    button[title="Copy to clipboard"],
-    button[aria-label="Copy to clipboard"] {
+    /* 1. 廢除所有隱藏機制，強制 100% 顯示 */
+    div[data-testid="stCodeBlock"] * {
         opacity: 1 !important;
         visibility: visible !important;
+    }
+
+    /* 2. 改造複製按鈕本體為紅色實體大按鈕 */
+    div[data-testid="stCodeBlock"] button {
+        background-color: #FF4B4B !important;
+        border: none !important;
+        border-radius: 6px !important;
+        padding: 5px 12px !important;
         display: flex !important;
         align-items: center !important;
-        justify-content: center !important;
-        background-color: #FF4B4B !important;
-        border: 1px solid #FF4B4B !important;
-        padding: 6px 12px !important;
-        border-radius: 6px !important;
         width: auto !important;
-        height: 32px !important;
-        right: 8px !important;
-        top: 8px !important;
-        transform: scale(1) !important;
-        transition: all 0.2s ease-in-out !important;
+        height: 36px !important;
+        position: absolute !important;
+        right: 10px !important;
+        top: 10px !important;
+        z-index: 9999 !important;
     }
-    
-    /* 使用偽元素強制在按鈕內補上「複製」文字 */
-    div[data-testid="stCodeBlock"] button::after,
-    button[title="Copy to clipboard"]::after,
-    button[aria-label="Copy to clipboard"]::after {
-        content: "複製" !important;
+
+    /* 3. 強制注入「點擊複製」文字 */
+    div[data-testid="stCodeBlock"] button::after {
+        content: "點擊複製" !important;
         color: white !important;
         font-size: 14px !important;
         font-weight: bold !important;
         margin-left: 6px !important;
-        white-space: nowrap !important;
     }
-    
-    /* 調整內建圖示為白色 */
-    div[data-testid="stCodeBlock"] button svg,
-    button[title="Copy to clipboard"] svg,
-    button[aria-label="Copy to clipboard"] svg {
-        fill: white !important;
+
+    /* 4. 調整內建圖示為白色 */
+    div[data-testid="stCodeBlock"] button svg {
         stroke: white !important;
-        color: white !important;
+        fill: white !important;
         width: 16px !important;
         height: 16px !important;
     }
@@ -55,7 +50,6 @@ st.markdown("""
     /* 點擊與懸停視覺回饋 */
     div[data-testid="stCodeBlock"] button:hover {
         background-color: #D43F3F !important;
-        border-color: #D43F3F !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -224,7 +218,7 @@ if search_term:
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
 
         if st.session_state.get('confirmed_plate') == plate:
-            st.markdown("#### 📋 點擊下方區塊右側的紅色按鈕即可複製：")
+            st.write("#### 📋 點擊下方各區塊右側的紅色按鈕即可複製：")
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
                 st.caption(field)
