@@ -5,32 +5,43 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
 
-# 注入自訂 CSS，將複製按鈕改為顯眼的「紅底白圖」常駐按鈕
+# 強制覆蓋 Streamlit 預設隱藏的複製按鈕
 st.markdown("""
     <style>
-    /* 針對 st.code 區塊內的複製按鈕進行樣式強制覆蓋 */
-    [data-testid="stCodeBlock"] button {
-        opacity: 1 !important;           /* 取消懸停隱藏，強制常駐顯示 */
-        background-color: #FF4B4B !important; /* 設定為紅色背景 */
-        padding: 8px 12px !important;    /* 增加按鈕的點擊範圍 (內距) */
-        border-radius: 6px !important;   /* 圓角邊框 */
-        right: 5px !important;           /* 距離右邊界 */
-        top: 5px !important;             /* 距離上邊界 */
-        transition: all 0.2s ease-in-out;
+    /* 針對所有帶有 Copy to clipboard 提示的按鈕強制顯示與改色 */
+    div[data-testid="stCodeBlock"] button,
+    button[title="Copy to clipboard"],
+    button[aria-label="Copy to clipboard"] {
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: flex !important;
+        background-color: #FF4B4B !important;
+        border: 2px solid #FF4B4B !important;
+        padding: 6px 10px !important;
+        border-radius: 8px !important;
+        transform: scale(1) !important;
+        transition: all 0.2s ease-in-out !important;
+        z-index: 9999 !important;
     }
     
-    /* 更改複製按鈕內的 SVG 圖示顏色與大小 */
-    [data-testid="stCodeBlock"] button svg {
-        fill: white !important;          /* 內部填色改為白色 */
-        stroke: white !important;        /* 邊線改為白色 */
-        width: 18px !important;          /* 放大圖示 */
-        height: 18px !important;
+    /* 更改 SVG 圖示的顏色與大小 */
+    div[data-testid="stCodeBlock"] button svg,
+    button[title="Copy to clipboard"] svg,
+    button[aria-label="Copy to clipboard"] svg {
+        fill: white !important;
+        stroke: white !important;
+        color: white !important;
+        width: 22px !important;
+        height: 22px !important;
     }
     
-    /* 滑鼠懸停時的視覺回饋 (稍微放大並變深紅) */
-    [data-testid="stCodeBlock"] button:hover {
+    /* 懸停效果 */
+    div[data-testid="stCodeBlock"] button:hover,
+    button[title="Copy to clipboard"]:hover,
+    button[aria-label="Copy to clipboard"]:hover {
         background-color: #D43F3F !important;
-        transform: scale(1.05);
+        border-color: #D43F3F !important;
+        transform: scale(1.1) !important;
     }
     </style>
 """, unsafe_allow_html=True)
