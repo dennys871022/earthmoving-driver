@@ -5,25 +5,35 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
 
-# ===== 新增：強制改造複製按鈕樣式的 CSS =====
+# 注入自訂 CSS，將複製按鈕改為顯眼的「紅底白圖」常駐按鈕
 st.markdown("""
-<style>
-/* 針對 st.code 區塊的複製按鈕進行樣式強制覆蓋 */
-div[data-testid="stCodeBlock"] button {
-    opacity: 1 !important; /* 永遠顯示，不需滑鼠游標停靠 */
-    visibility: visible !important;
-    transform: scale(1.5) translate(-10px, 10px) !important; /* 放大 1.5 倍並往左下微調位置 */
-    background-color: #FF4B4B !important; /* 顯眼的紅色背景 */
-    border-radius: 4px !important;
-    border: 1px solid #FFF !important;
-}
-/* 更改按鈕內的圖示顏色為白色 */
-div[data-testid="stCodeBlock"] button svg {
-    stroke: #FFFFFF !important; 
-}
-</style>
+    <style>
+    /* 針對 st.code 區塊內的複製按鈕進行樣式強制覆蓋 */
+    [data-testid="stCodeBlock"] button {
+        opacity: 1 !important;           /* 取消懸停隱藏，強制常駐顯示 */
+        background-color: #FF4B4B !important; /* 設定為紅色背景 */
+        padding: 8px 12px !important;    /* 增加按鈕的點擊範圍 (內距) */
+        border-radius: 6px !important;   /* 圓角邊框 */
+        right: 5px !important;           /* 距離右邊界 */
+        top: 5px !important;             /* 距離上邊界 */
+        transition: all 0.2s ease-in-out;
+    }
+    
+    /* 更改複製按鈕內的 SVG 圖示顏色與大小 */
+    [data-testid="stCodeBlock"] button svg {
+        fill: white !important;          /* 內部填色改為白色 */
+        stroke: white !important;        /* 邊線改為白色 */
+        width: 18px !important;          /* 放大圖示 */
+        height: 18px !important;
+    }
+    
+    /* 滑鼠懸停時的視覺回饋 (稍微放大並變深紅) */
+    [data-testid="stCodeBlock"] button:hover {
+        background-color: #D43F3F !important;
+        transform: scale(1.05);
+    }
+    </style>
 """, unsafe_allow_html=True)
-# ============================================
 
 st.title("📱 現場車籍查詢與派車")
 
@@ -189,7 +199,7 @@ if search_term:
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
 
         if st.session_state.get('confirmed_plate') == plate:
-            st.write("#### 📋 點擊下方區塊右側的「紅底白圖」按鈕即可複製：")
+            st.markdown("#### 📋 點擊下方區塊右側的「紅底白圖」按鈕即可複製：")
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
                 st.caption(field)
