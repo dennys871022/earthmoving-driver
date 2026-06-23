@@ -4,6 +4,27 @@ from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
+
+# ===== 新增：強制改造複製按鈕樣式的 CSS =====
+st.markdown("""
+<style>
+/* 針對 st.code 區塊的複製按鈕進行樣式強制覆蓋 */
+div[data-testid="stCodeBlock"] button {
+    opacity: 1 !important; /* 永遠顯示，不需滑鼠游標停靠 */
+    visibility: visible !important;
+    transform: scale(1.5) translate(-10px, 10px) !important; /* 放大 1.5 倍並往左下微調位置 */
+    background-color: #FF4B4B !important; /* 顯眼的紅色背景 */
+    border-radius: 4px !important;
+    border: 1px solid #FFF !important;
+}
+/* 更改按鈕內的圖示顏色為白色 */
+div[data-testid="stCodeBlock"] button svg {
+    stroke: #FFFFFF !important; 
+}
+</style>
+""", unsafe_allow_html=True)
+# ============================================
+
 st.title("📱 現場車籍查詢與派車")
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1y3Qnlx9qFwV6S6pyFTsT4rlXP_Tb8qd9tNhRBTjBHao/edit"
@@ -14,7 +35,6 @@ except Exception as e:
     st.error(f"資料庫連線失敗：{e}")
     st.stop()
 
-# 速度優化：調高快取時間至 30 分鐘 (1800秒)，避免每次點擊都重新下載整張車籍表
 def load_drivers_data():
     try:
         df = conn.read(spreadsheet=SHEET_URL, worksheet="drivers", ttl=1800)
@@ -65,7 +85,6 @@ with st.expander("⚙️ 個人化顯示順序設定"):
 
 display_fields = new_order if len(new_order) == 4 else all_fields
 
-# 狀態儲存優化：自動從網址參數讀取上一次搜尋的關鍵字，防止關閉網頁後消失
 default_search = st.query_params.get("search", "")
 search_term = st.text_input("輸入車號數字搜尋 (車頭或車斗)：", value=default_search)
 
@@ -82,7 +101,6 @@ def match_plate(plate_val, kw):
 if search_term:
     keyword = search_term.strip().upper()
     
-    # 即時更新 URL 參數鎖定目前搜尋狀態
     if st.query_params.get("search") != keyword:
         st.query_params["search"] = keyword
     
@@ -151,7 +169,6 @@ if search_term:
             current_time_str = tw_now.strftime("%H:%M:%S")
             note = ""
             
-            # 速度優化：改用本地瀏覽器記憶體比對連續點擊時間，移除原本讀取整張歷史紀錄表的緩慢步驟
             if st.session_state['last_submit_time'] is not None:
                 diff = (tw_now - st.session_state['last_submit_time']).total_seconds()
                 if diff < 60:
@@ -172,7 +189,7 @@ if search_term:
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
 
         if st.session_state.get('confirmed_plate') == plate:
-            st.write("#### 📋 點擊下方各區塊右上角圖示即可個別複製")
+            st.write("#### 📋 點擊下方區塊右側的「紅底白圖」按鈕即可複製：")
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
                 st.caption(field)
