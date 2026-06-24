@@ -218,7 +218,24 @@ if search_term:
             if st.session_state['last_submit_time'] is not None:
                 diff = (tw_now - st.session_state['last_submit_time']).total_seconds()
                 if diff < 60:
-                    note = "1分鐘內連續查詢"
+                    note = "1分鐘內連續點擊"
+
+            try:
+                df_logs = conn.read(spreadsheet=SHEET_URL, worksheet="dispatch_logs", ttl=0)
+                df_logs = df_logs.dropna(how='all')
+                if not df_logs.empty and '車頭車號' in df_logs.columns and '日期' in df_logs.columns and '時間' in df_logs.columns:
+                    plate_logs = df_logs[df_logs['車頭車號'].astype(str) == plate].copy()
+                    if not plate_logs.empty:
+                        plate_logs['完整時間'] = pd.to_datetime(plate_logs['日期'].astype(str) + ' ' + plate_logs['時間'].astype(str), errors='coerce')
+                        last_time = plate_logs['完整時間'].max()
+                        if pd.notnull(last_time):
+                            if (tw_now - last_time).total_seconds() < 3600:
+                                if note:
+                                    note += " | 1小時內相同車號"
+                                else:
+                                    note = "1小時內相同車號"
+            except:
+                pass
 
             new_log_data = {
                 "日期": current_date_str,
