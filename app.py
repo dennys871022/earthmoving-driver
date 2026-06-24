@@ -6,6 +6,57 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
 
+st.markdown("""
+    <style>
+    div:has(> [data-testid="stCopyButton"]),
+    div:has(> button[title="Copy to clipboard"]) {
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    [data-testid="stCopyButton"],
+    button[title="Copy to clipboard"] {
+        opacity: 1 !important;
+        visibility: visible !important;
+        background-color: #FF4B4B !important;
+        border: none !important;
+        border-radius: 6px !important;
+        padding: 6px 12px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: auto !important;
+        height: 36px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    [data-testid="stCopyButton"]::after,
+    button[title="Copy to clipboard"]::after {
+        content: "點擊複製" !important;
+        color: white !important;
+        font-size: 14px !important;
+        font-weight: bold !important;
+        margin-left: 6px !important;
+        letter-spacing: 1px !important;
+    }
+
+    [data-testid="stCopyButton"] svg,
+    button[title="Copy to clipboard"] svg {
+        stroke: white !important;
+        fill: transparent !important;
+        width: 18px !important;
+        height: 18px !important;
+    }
+
+    [data-testid="stCopyButton"]:hover,
+    button[title="Copy to clipboard"]:hover {
+        background-color: #D43F3F !important;
+        transform: scale(1.05) !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📱 現場車籍查詢與派車")
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1y3Qnlx9qFwV6S6pyFTsT4rlXP_Tb8qd9tNhRBTjBHao/edit"
@@ -42,7 +93,6 @@ def safe_append_row(worksheet_name, data_dict):
             st.error(f"寫入失敗：{e2}")
             return False
 
-# 獨立自訂的複製按鈕區塊，完全不受 Streamlit 限制
 def custom_copy_block(label, text):
     st.caption(label)
     html_code = f"""
@@ -87,14 +137,14 @@ def match_plate(plate_val, kw):
     if pd.isna(plate_val):
         return False
     plate_str = str(plate_val).upper().strip().replace(" ", "")
-    kw = kw.replace(" ", "")
-    if plate_str == kw:
+    kw = kw.replace(" ", "").replace("-", "")
+    if plate_str.replace("-", "") == kw:
         return True
     parts = plate_str.replace("-", " ").split()
     return kw in parts
 
 if search_term:
-    keyword = search_term.strip().upper()
+    keyword = search_term.strip().upper().replace("-", "")
     
     if st.query_params.get("search") != keyword:
         st.query_params["search"] = keyword
@@ -110,25 +160,23 @@ if search_term:
         st.warning("查無符合資料。您可以在此直接新增臨時車籍：")
         with st.form("add_driver_form"):
             st.write("### ➕ 新增現場車籍資料")
-            new_head = st.text_input("車頭車號 (必填，例如 999-GU)", value=keyword)
-            new_tail = st.text_input("車斗車號 (必填)")
+            new_head = st.text_input("車頭車號 (必填，不需輸入減號，例如 999GU)", value=keyword)
+            new_tail = st.text_input("車斗車號 (必填，不需輸入減號)")
             new_name = st.text_input("司機姓名 (必填)")
             new_id = st.text_input("身分證 (必填)")
             
             if st.form_submit_button("寫入資料庫並繼續派車", use_container_width=True):
-                norm_head = new_head.strip().upper().replace(" ", "")
-                norm_tail = new_tail.strip().upper().replace(" ", "")
+                norm_head = new_head.strip().upper().replace(" ", "").replace("-", "")
+                norm_tail = new_tail.strip().upper().replace(" ", "").replace("-", "")
                 norm_name = new_name.strip()
                 norm_id = new_id.strip().upper().replace(" ", "")
                 
                 if not norm_head or not norm_tail or not norm_name or not norm_id:
                     st.error("所有欄位皆為必填，請檢查是否有遺漏。")
-                elif "-" not in norm_head or "-" not in norm_tail:
-                    st.error("車牌格式錯誤：車頭與車斗車號中間必須包含「-」符號。")
                 else:
                     existing_plates = []
                     if not df_drivers.empty and '車頭車號' in df_drivers.columns:
-                        existing_plates = df_drivers['車頭車號'].astype(str).str.upper().str.replace(" ", "").tolist()
+                        existing_plates = df_drivers['車頭車號'].astype(str).str.upper().str.replace(" ", "").str.replace("-", "").tolist()
                     
                     if norm_head in existing_plates:
                         st.error(f"❌ 錯誤：車號 {norm_head} 已經存在於資料庫中。")
@@ -144,18 +192,21 @@ if search_term:
                             st.rerun()
     else:
         if len(search_results) > 1:
-            options = search_results.apply(lambda x: f"{x['車頭車號']} ({x['姓名']})", axis=1).tolist()
+            options = search_results.apply(lambda x: f"{str(x['車頭車號']).replace('-', '')} ({x['姓名']})", axis=1).tolist()
             selected_option = st.selectbox("找到多筆，請選擇：", options=options)
             selected_idx = options.index(selected_option)
             target_data = search_results.iloc[selected_idx]
         else:
             target_data = search_results.iloc[0]
 
-        plate = target_data['車頭車號']
+        plate = str(target_data['車頭車號']).replace("-", "")
 
         st.markdown("### 🔎 查詢結果確認")
         for field in display_fields:
-            st.markdown(f"**{field}：** {target_data.get(field, '無資料')}")
+            val = str(target_data.get(field, '無資料'))
+            if field in ["車頭車號", "車斗車號"]:
+                val = val.replace("-", "")
+            st.markdown(f"**{field}：** {val}")
         st.divider()
 
         if st.button("✅ 資訊無誤，確認車輛並記錄車次", use_container_width=True):
@@ -187,7 +238,8 @@ if search_term:
             st.markdown("#### 📋 點擊下方各區塊右側的紅色按鈕即可複製：")
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
-                # 使用全新的獨立按鈕元件取代舊的 st.code
+                if field in ["車頭車號", "車斗車號"]:
+                    val = val.replace("-", "")
                 custom_copy_block(field, val)
         else:
             st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖複製功能。")
