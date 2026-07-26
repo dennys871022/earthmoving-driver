@@ -192,9 +192,18 @@ if search_term:
                             st.rerun()
     else:
         if len(search_results) > 1:
-            options = search_results.apply(lambda x: f"{str(x['車頭車號']).replace('-', '')} ({x['姓名']})", axis=1).tolist()
-            selected_option = st.selectbox("找到多筆，請選擇：", options=options)
-            selected_idx = options.index(selected_option)
+            # 修改重點 1：生成帶有更多鑑別資訊（如車斗）的顯示字串清單
+            display_options = search_results.apply(
+                lambda x: f"車頭: {str(x.get('車頭車號', '')).replace('-', '')} | 車斗: {str(x.get('車斗車號', '')).replace('-', '')} ({x.get('姓名', '')})", 
+                axis=1
+            ).tolist()
+            
+            # 修改重點 2：options 改傳入對應數量的整數 (0, 1, 2...)，並用 format_func 映射顯示文字
+            selected_idx = st.selectbox(
+                "找到多筆，請選擇：", 
+                options=range(len(search_results)),
+                format_func=lambda i: display_options[i]
+            )
             target_data = search_results.iloc[selected_idx]
         else:
             target_data = search_results.iloc[0]
