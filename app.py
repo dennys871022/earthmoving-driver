@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
+import html as _html
+import json as _json
 
 st.set_page_config(page_title="現場派車系統", layout="centered")
 
@@ -74,9 +76,19 @@ def load_drivers_data():
     except:
         return pd.DataFrame()
 
+@st.cache_resource(ttl=3000)
+def get_spreadsheet():
+    """試算表連線只開一次、跨使用者共用（原本每次寫入都重新 open_by_url，要多等 1~2 秒）。"""
+    return conn.client.open_by_url(SHEET_URL)
+
+
 def safe_append_row(worksheet_name, data_dict):
     try:
-        worksheet = conn.client.open_by_url(SHEET_URL).worksheet(worksheet_name)
+        try:
+            worksheet = get_spreadsheet().worksheet(worksheet_name)
+        except Exception:
+            get_spreadsheet.clear()          # 連線過期就重開一次
+            worksheet = get_spreadsheet().worksheet(worksheet_name)
         headers = worksheet.row_values(1)
         row_data = [str(data_dict.get(h, "")) for h in headers]
         worksheet.append_row(row_data)
@@ -93,18 +105,59 @@ def safe_append_row(worksheet_name, data_dict):
             st.error(f"寫入失敗：{e2}")
             return False
 
-def custom_copy_block(label, text):
-    st.caption(label)
+def custom_copy_blocks(items):
+    """四個複製區塊合併成一個 iframe（原本每個欄位一個 iframe，會多載入三個）。items = [(欄位, 內容), ...]"""
+    rows = []
+    for i, (label, text) in enumerate(items):
+        rows.append(f"""
+        <div class="lb">{_html.escape(label)}</div>
+        <div class="row"><div class="v">{_html.escape(text)}</div>
+        <button data-i="{i}">📋 點擊複製</button></div>""")
+    texts = _json.dumps([t for _, t in items], ensure_ascii=False).replace("</", "<\\/")
     html_code = f"""
-    <div style="display: flex; align-items: center; justify-content: space-between; background-color: #f7f9fc; padding: 10px 15px; border-radius: 8px; border: 1px solid #e0e4e8; margin-bottom: 5px; font-family: sans-serif;">
-        <div style="font-family: monospace; font-size: 16px; color: #333;">{text}</div>
-        <button onclick="navigator.clipboard.writeText('{text}'); this.innerText='✅ 已複製'; this.style.backgroundColor='#28a745'; setTimeout(() => {{ this.innerText='📋 點擊複製'; this.style.backgroundColor='#FF4B4B'; }}, 2000);"
-                style="background-color: #FF4B4B; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; width: 110px;">
-            📋 點擊複製
-        </button>
-    </div>
-    """
-    components.html(html_code, height=70)
+    <style>
+      body{{margin:0;font-family:sans-serif}}
+      .lb{{font-size:13px;color:#777;margin:6px 2px 2px}}
+      .row{{display:flex;align-items:center;justify-content:space-between;background:#f7f9fc;padding:10px 15px;border-radius:8px;border:1px solid #e0e4e8}}
+      .v{{font-family:monospace;font-size:16px;color:#333;word-break:break-all}}
+      button{{background:#FF4B4B;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:bold;font-size:14px;cursor:pointer;width:120px;box-shadow:0 2px 5px rgba(0,0,0,.15)}}
+    </style>
+    {"".join(rows)}
+    <script>
+      const T = {texts};
+      function copyText(t){{
+        if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+        const a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); return Promise.resolve();
+      }}
+      document.querySelectorAll('button').forEach(b => b.onclick = () => {{
+        copyText(T[+b.dataset.i]).then(() => {{
+          b.innerText='✅ 已複製'; b.style.backgroundColor='#28a745';
+          setTimeout(() => {{ b.innerText='📋 點擊複製'; b.style.backgroundColor='#FF4B4B'; }}, 2000);
+        }});
+      }});
+    </script>"""
+    components.html(html_code, height=80 * len(items) + 10)
+
+
+@st.cache_resource
+def recent_submissions():
+    """這個 app 最近送出的車次（車號 → 時間），跨使用者共用，用來判斷「1小時內相同車號」，不用每次按鈕都去讀整張 dispatch_logs。"""
+    return {}
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def last_logged_times():
+    """dispatch_logs 裡每個車號最後一筆時間；快取 2 分鐘、所有人共用（原本每按一次確認就整張表重讀一次）。"""
+    try:
+        df = conn.read(spreadsheet=SHEET_URL, worksheet="dispatch_logs", ttl=120).dropna(how="all")
+        if df.empty or not {"車頭車號", "日期", "時間"} <= set(df.columns):
+            return {}
+        t = pd.to_datetime(df["日期"].astype(str) + " " + df["時間"].astype(str), errors="coerce")
+        s = pd.Series(t.values, index=df["車頭車號"].astype(str)).dropna()
+        return s.groupby(level=0).max().to_dict()
+    except Exception:
+        return {}
+
 
 df_drivers = load_drivers_data()
 
@@ -188,6 +241,7 @@ if search_term:
                             "車斗車號": norm_tail
                         }
                         if safe_append_row("drivers", new_driver_data):
+                            st.cache_data.clear()      # 否則 30 分鐘內搜尋還是找不到剛新增的車
                             st.success("✅ 新增成功！")
                             st.rerun()
     else:
@@ -229,22 +283,9 @@ if search_term:
                 if diff < 60:
                     note = "1分鐘內連續點擊"
 
-            try:
-                df_logs = conn.read(spreadsheet=SHEET_URL, worksheet="dispatch_logs", ttl=0)
-                df_logs = df_logs.dropna(how='all')
-                if not df_logs.empty and '車頭車號' in df_logs.columns and '日期' in df_logs.columns and '時間' in df_logs.columns:
-                    plate_logs = df_logs[df_logs['車頭車號'].astype(str) == plate].copy()
-                    if not plate_logs.empty:
-                        plate_logs['完整時間'] = pd.to_datetime(plate_logs['日期'].astype(str) + ' ' + plate_logs['時間'].astype(str), errors='coerce')
-                        last_time = plate_logs['完整時間'].max()
-                        if pd.notnull(last_time):
-                            if (tw_now - last_time).total_seconds() < 3600:
-                                if note:
-                                    note += " | 1小時內相同車號"
-                                else:
-                                    note = "1小時內相同車號"
-            except:
-                pass
+            last_time = max([t for t in (recent_submissions().get(plate), last_logged_times().get(plate)) if t is not None and pd.notnull(t)], default=None)
+            if last_time is not None and (tw_now - pd.Timestamp(last_time).to_pydatetime()).total_seconds() < 3600:
+                note = (note + " | 1小時內相同車號") if note else "1小時內相同車號"
 
             new_log_data = {
                 "日期": current_date_str,
@@ -256,16 +297,19 @@ if search_term:
             }
             
             if safe_append_row("dispatch_logs", new_log_data):
+                recent_submissions()[plate] = tw_now
                 st.session_state['confirmed_plate'] = plate
                 st.session_state['last_submit_time'] = tw_now
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
 
         if st.session_state.get('confirmed_plate') == plate:
             st.markdown("#### 📋 點擊下方各區塊右側的紅色按鈕即可複製：")
+            items = []
             for field in display_fields:
                 val = str(target_data.get(field, "無資料"))
                 if field in ["車頭車號", "車斗車號"]:
                     val = val.replace("-", "")
-                custom_copy_block(field, val)
+                items.append((field, val))
+            custom_copy_blocks(items)
         else:
             st.info("⚠️ 請先點擊上方「✅ 資訊無誤，確認車輛並記錄車次」按鈕，解鎖複製功能。")
