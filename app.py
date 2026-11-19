@@ -82,7 +82,7 @@ def get_spreadsheet():
     return conn.client.open_by_url(SHEET_URL)
 
 
-def safe_append_row(worksheet_name, data_dict):
+def safe_append_row(worksheet_name, data_dict, retries=3, quiet=False):
     """
     在分頁最後面「新增一列」。只用 append（單一動作、不會動到既有資料），失敗就重試，絕不改用「讀整張再整張寫回」：
     原本的備用做法是 conn.read 整張 → 加一列 → conn.update，而 conn.update 會「先清空整張再寫入」，
@@ -90,7 +90,7 @@ def safe_append_row(worksheet_name, data_dict):
     """
     import time
     last_err = None
-    for attempt in range(3):
+    for attempt in range(retries):
         try:
             try:
                 worksheet = get_spreadsheet().worksheet(worksheet_name)
@@ -99,6 +99,8 @@ def safe_append_row(worksheet_name, data_dict):
                 worksheet = get_spreadsheet().worksheet(worksheet_name)
             headers = worksheet.row_values(1)
             if not headers or "車頭車號" not in headers:
+                if quiet:
+                    return False
                 st.error(f"⛔ 雲端【{worksheet_name}】的標題列不見了（可能資料被清空），為了不寫壞資料這次不送出。請通知管理員。")
                 return False
             row_data = [str(data_dict.get(h, "")) for h in headers]
@@ -107,9 +109,38 @@ def safe_append_row(worksheet_name, data_dict):
         except Exception as e:
             last_err = e
             get_spreadsheet.clear()
-            time.sleep(1.5 * (attempt + 1))
-    st.error(f"寫入失敗（已重試3次）：{last_err}。請稍後再按一次。")
+            if attempt < retries - 1:
+                time.sleep(1.5 * (attempt + 1))
+    if not quiet:
+        st.error(f"寫入失敗（已重試{retries}次）：{last_err}")
     return False
+
+
+@st.cache_resource
+def pending_logs():
+    """雲端暫時寫不進去的車次（所有使用者共用）。之後任何人送出車次時會先自動補寫。"""
+    return []
+
+
+@st.cache_resource
+def _pending_lock():
+    import threading
+    return threading.Lock()
+
+
+def flush_pending_logs():
+    lock = _pending_lock()
+    if not lock.acquire(blocking=False):      # 別人正在補寫就跳過，避免同一筆被補兩次
+        return
+    try:
+        q = pending_logs()
+        for item in list(q):
+            if safe_append_row("dispatch_logs", item, retries=1, quiet=True):
+                q.remove(item)
+            else:
+                break
+    finally:
+        lock.release()
 
 
 def custom_copy_blocks(items):
@@ -303,11 +334,19 @@ if search_term:
                 "備註": note
             }
             
-            if safe_append_row("dispatch_logs", new_log_data):
-                recent_submissions()[plate] = tw_now
-                st.session_state['confirmed_plate'] = plate
-                st.session_state['last_submit_time'] = tw_now
+            flush_pending_logs()      # 先補寫之前沒寫進去的車次
+            ok = safe_append_row("dispatch_logs", new_log_data, quiet=True)
+            if not ok:
+                pending_logs().append(new_log_data)
+            # 不管雲端有沒有寫成功都解鎖複製，現場不能因為網路卡住就停工
+            recent_submissions()[plate] = tw_now
+            st.session_state['confirmed_plate'] = plate
+            st.session_state['last_submit_time'] = tw_now
+            if ok:
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
+            else:
+                st.warning(f"⚠️ 雲端暫時寫不進去，這車（{plate} {current_time_str}）已先暫存，下一台車送出時會自動補寫。"
+                           "複製功能已解鎖，可以照常作業。若一直出現這個訊息請通知管理員。")
 
         if st.session_state.get('confirmed_plate') == plate:
             st.markdown("#### 📋 點擊下方各區塊右側的紅色按鈕即可複製：")
