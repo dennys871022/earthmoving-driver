@@ -79,7 +79,7 @@ def load_drivers_data():
 @st.cache_resource(ttl=3000)
 def get_spreadsheet():
     """試算表連線只開一次、跨使用者共用（原本每次寫入都重新 open_by_url，要多等 1~2 秒）。"""
-    return conn.client.open_by_url(SHEET_URL)
+    return conn.client._client.open_by_url(SHEET_URL)   # conn.client 沒有 open_by_url，要用底層的 gspread client
 
 
 def safe_append_row(worksheet_name, data_dict, retries=3, quiet=False):
@@ -111,6 +111,7 @@ def safe_append_row(worksheet_name, data_dict, retries=3, quiet=False):
             get_spreadsheet.clear()
             if attempt < retries - 1:
                 time.sleep(1.5 * (attempt + 1))
+    st.session_state["last_write_err"] = str(last_err)
     if not quiet:
         st.error(f"寫入失敗（已重試{retries}次）：{last_err}")
     return False
@@ -346,7 +347,8 @@ if search_term:
                 st.success("車次紀錄已安全送出，個別複製功能已解鎖！")
             else:
                 st.warning(f"⚠️ 雲端暫時寫不進去，這車（{plate} {current_time_str}）已先暫存，下一台車送出時會自動補寫。"
-                           "複製功能已解鎖，可以照常作業。若一直出現這個訊息請通知管理員。")
+                           "複製功能已解鎖，可以照常作業。若一直出現這個訊息請通知管理員。"
+                           f"\n\n錯誤原因：{st.session_state.get('last_write_err', '')}")
 
         if st.session_state.get('confirmed_plate') == plate:
             st.markdown("#### 📋 點擊下方各區塊右側的紅色按鈕即可複製：")
