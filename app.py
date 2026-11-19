@@ -83,27 +83,34 @@ def get_spreadsheet():
 
 
 def safe_append_row(worksheet_name, data_dict):
-    try:
+    """
+    在分頁最後面「新增一列」。只用 append（單一動作、不會動到既有資料），失敗就重試，絕不改用「讀整張再整張寫回」：
+    原本的備用做法是 conn.read 整張 → 加一列 → conn.update，而 conn.update 會「先清空整張再寫入」，
+    只要寫入那一步失敗、或讀到的資料不完整，dispatch_logs 就會被洗到只剩今天的車次。
+    """
+    import time
+    last_err = None
+    for attempt in range(3):
         try:
-            worksheet = get_spreadsheet().worksheet(worksheet_name)
-        except Exception:
-            get_spreadsheet.clear()          # 連線過期就重開一次
-            worksheet = get_spreadsheet().worksheet(worksheet_name)
-        headers = worksheet.row_values(1)
-        row_data = [str(data_dict.get(h, "")) for h in headers]
-        worksheet.append_row(row_data)
-        return True
-    except Exception as e:
-        try:
-            df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
-            df = df.dropna(how='all')
-            new_row = pd.DataFrame([data_dict])
-            updated_df = pd.concat([df, new_row], ignore_index=True)
-            conn.update(spreadsheet=SHEET_URL, worksheet=worksheet_name, data=updated_df)
+            try:
+                worksheet = get_spreadsheet().worksheet(worksheet_name)
+            except Exception:
+                get_spreadsheet.clear()          # 連線過期就重開一次
+                worksheet = get_spreadsheet().worksheet(worksheet_name)
+            headers = worksheet.row_values(1)
+            if not headers or "車頭車號" not in headers:
+                st.error(f"⛔ 雲端【{worksheet_name}】的標題列不見了（可能資料被清空），為了不寫壞資料這次不送出。請通知管理員。")
+                return False
+            row_data = [str(data_dict.get(h, "")) for h in headers]
+            worksheet.append_row(row_data, insert_data_option="INSERT_ROWS")   # 寫入格式維持原本的 RAW
             return True
-        except Exception as e2:
-            st.error(f"寫入失敗：{e2}")
-            return False
+        except Exception as e:
+            last_err = e
+            get_spreadsheet.clear()
+            time.sleep(1.5 * (attempt + 1))
+    st.error(f"寫入失敗（已重試3次）：{last_err}。請稍後再按一次。")
+    return False
+
 
 def custom_copy_blocks(items):
     """四個複製區塊合併成一個 iframe（原本每個欄位一個 iframe，會多載入三個）。items = [(欄位, 內容), ...]"""
